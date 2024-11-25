@@ -1,10 +1,248 @@
-<form>
-    <label>Operando A</label>
-    <input type="number" name="n1" class="form-control" placeholder="Escribe operando A" [(ngModel)]="n1">
-    
-    
-    <label for="numero2">Operando B</label>
-    <input type="number" name="n2" class="form-control" placeholder="Escribe operando B" [(ngModel)]="n2">
-    
-    <button type="submit" class="btn btn-primary" (click)="sumar()">Sumar</button> 
-</form>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi PWA de Clima</title>
+    <link rel="stylesheet" href="complementos/styles.css">
+    <link rel="manifest" href="manifest.json">
+</head>
+<body>
+    <!-- Pantalla de bienvenida -->
+    <div class="splash-screen">
+        <h1>Bienvenido a ClimApp</h1>
+    </div>
+
+    <!-- Pantalla principal -->
+    <div class="home-screen">
+        <!-- Barra de navegación -->
+        <div class="navbar">
+            <input type="text" id="cityInput" class="search-bar" placeholder="Buscar ciudad...">
+            <button onclick="searchWeather()" class="search-button">Buscar</button>
+        </div>
+
+        <!-- Información meteorológica -->
+        <div class="weather-info">
+            <h2>Información Meteorológica</h2>
+            <div id="weatherResults"></div>
+        </div>
+    </div>
+
+     <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            showSplashScreen();
+
+            // Recuperar la última ciudad consultada de IndexedDB
+            readLastCityFromDB().then(lastCity => {
+                if (lastCity) {
+                    document.getElementById('cityInput').value = lastCity;
+                    searchWeather();
+                }
+
+                setTimeout(function () {
+                    hideSplashScreen();
+                    showHomeScreen();
+                }, 2000);
+            });
+        });
+
+        // Función para realizar la búsqueda del clima
+        function searchWeather() {
+            const city = document.getElementById('cityInput').value;
+
+            if (city.trim() === '') {
+                alert('Por favor, ingrese el nombre de la ciudad.');
+                return;
+            }
+
+            // Hacer la solicitud a la API de Weatherbit (puedes reemplazar esto con tu propia clave de API)
+            const apiKey = 'd8eba30109b34be3837c5bc1112fb378'; // Reemplaza con tu clave de API de Weatherbit
+            const apiUrl = `https://api.weatherbit.io/v2.0/current?city=${city}&key=${apiKey}`;
+
+            // Realizar la solicitud
+            fetch(apiUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('No se pudo obtener datos del clima. Por favor, ingrese una ciudad válida.');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    displayWeatherResults(data);
+
+                    // Almacenar la ciudad consultada en IndexedDB
+                    saveLastCityToDB(city);
+
+                    Notification.requestPermission().then(function (result){
+                    if (result === "granted"){
+                        randomNotification(city);
+                    }
+            });
+                })
+                .catch(error => {
+                    console.error('Error al obtener datos del clima:', error);
+                    alert('Error al obtener datos del clima. Por favor, ingrese una ciudad válida.');
+                    
+                    // Intentar cargar la información almacenada localmente en modo offline
+                    readLastCityFromDB().then(lastCity => {
+                        if (lastCity) {
+                            displayOfflineWeatherResults(lastCity);
+                        }
+                    });
+                },
+                   
+                );
+        }
+
+        // Función para mostrar los resultados del clima en la interfaz
+        function displayWeatherResults(data) {
+            const weatherResultsElement = document.getElementById('weatherResults');
+
+            // Limpiar resultados anteriores
+            weatherResultsElement.innerHTML = '';
+
+            // Verificar si la solicitud fue exitosa
+            if (data.error) {
+                alert('Error al obtener datos del clima. Por favor, ingrese una ciudad válida.');
+                return;
+            }
+
+            // Crear elementos para mostrar los resultados
+            const cityNameElement = document.createElement('h3');
+            cityNameElement.textContent = `Clima en ${data.data[0].city_name}, ${data.data[0].country_code}`;
+
+            const temperatureElement = document.createElement('p');
+            temperatureElement.textContent = `Temperatura: ${data.data[0].temp} °C`;
+
+            const descriptionElement = document.createElement('p');
+            descriptionElement.textContent = `Descripción: ${data.data[0].weather.description}`;
+            // Agregar elementos al contenedor
+            weatherResultsElement.appendChild(cityNameElement);
+            weatherResultsElement.appendChild(temperatureElement);
+            weatherResultsElement.appendChild(descriptionElement);
+            
+        }
+
+        // Función para mostrar resultados en modo offline
+        function displayOfflineWeatherResults(lastCity) {
+            const weatherResultsElement = document.getElementById('weatherResults');
+
+            // Limpiar resultados anteriores
+            weatherResultsElement.innerHTML = '';
+
+            // Crear elementos para mostrar la información almacenada localmente
+            const offlineMessageElement = document.createElement('p');
+            offlineMessageElement.textContent = `Mostrando la ultima busqueda realizada: ${lastCity} almacenada localmente (modo offline).`;
+
+            // Agregar elementos al contenedor
+            weatherResultsElement.appendChild(offlineMessageElement);
+            
+        }
+
+        // JavaScript para mostrar y ocultar las pantallas (sin cambios)
+        document.addEventListener('DOMContentLoaded', function () {
+            showSplashScreen();
+
+            setTimeout(function () {
+                hideSplashScreen();
+                showHomeScreen();
+            }, 2000);
+        });
+
+        function showSplashScreen() {
+            document.querySelector('.splash-screen').style.display = 'block';
+            document.querySelector('.home-screen').style.display = 'none';
+        }
+
+        function hideSplashScreen() {
+            document.querySelector('.splash-screen').style.display = 'none';
+        }
+
+        function showHomeScreen() {
+            document.querySelector('.home-screen').style.display = 'flex';
+        }
+
+        // Funciones para trabajar con IndexedDB
+        function saveLastCityToDB(city) {
+            const request = indexedDB.open('WeatherDB', 1);
+
+            request.onupgradeneeded = function (event) {
+                const db = event.target.result;
+                const store = db.createObjectStore('cities', { keyPath: 'id' });
+                store.add({ id: 1, name: city });
+            };
+
+            request.onsuccess = function (event) {
+                const db = event.target.result;
+                const transaction = db.transaction(['cities'], 'readwrite');
+                const store = transaction.objectStore('cities');
+                store.put({ id: 1, name: city });
+            };
+        }
+
+        function readLastCityFromDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('WeatherDB', 1);
+
+                request.onupgradeneeded = function (event) {
+                    event.target.result.createObjectStore('cities', { keyPath: 'id' });
+                };
+
+                request.onsuccess = function (event) {
+                    const db = event.target.result;
+                    const transaction = db.transaction(['cities'], 'readonly');
+                    const store = transaction.objectStore('cities');
+                    const request = store.get(1);
+
+                    request.onsuccess = function (event) {
+                        const lastCity = event.target.result ? event.target.result.name : null;
+                        resolve(lastCity);
+                    };
+                };
+
+                request.onerror = function (event) {
+                    reject('Error al abrir la base de datos: ' + event.target.errorCode);
+                };
+            });
+        }
+      
+
+        
+        function randomNotification(lastCity){
+            var randomItem = Math.floor(Math.random()*1);
+            var notifTitle = "Sistema PWA";
+            var notifBody = "Has buscado el clima de: " +lastCity+ ".";
+            var notifImg = "icon.png";
+            var options = {
+                body: notifBody,
+                icon: notifImg,
+              
+            };
+            var notif = new Notification(notifTitle, options);
+            //setTimeout(randomNotification, 30000);
+        }
+    </script>
+  <script>
+
+    window.addEventListener('load', () => {
+        registrarSW();
+    });
+
+    async function registrarSW() { 
+        if('serviceWorker' in navigator) {
+            
+            try{
+                await navigator 
+                .serviceWorker
+                .register('sw.js');
+            }
+
+            catch (e){    
+                console.log('El service worker no pudo ser registrado');
+            } 
+        } 
+    }
+
+</script>
+</body>
+</html>
